@@ -35,39 +35,59 @@ void process_item() {
 
 void * consume(void * arg) {
 	while (true) {
-		while (is_empty == true) {
+		pthread_mutex_lock(&lock);
+		while (is_empty) {
 			pthread_cond_wait(&cond, &lock);
 		}
-		pthread_mutex_lock(&lock);
 		num_pipe_items--;
+		is_full = false;
 		if (num_pipe_items == 0) {
 			is_empty = true;
 		}
-		pthread_cond_signal(&cond);
 		pthread_mutex_unlock(&lock);
+		pthread_cond_signal(&cond);
 		process_item();
+		printf("Item consumed. %d items in pipe.\n", num_pipe_items);
 	}
 }
 
 void * produce(void * arg) {
 	while (true) {
+		pthread_mutex_lock(&lock);
 		while (is_full) {
 			pthread_cond_wait(&cond, &lock);
 		}
-		pthread_mutex_lock(&lock);
 		num_pipe_items++;
+		is_empty = false;
 		if (num_pipe_items == pipe_size) {
 			is_full = true;
 		}
-		pthread_cond_signal(&cond);
 		pthread_mutex_unlock(&lock);
+		pthread_cond_signal(&cond);
+		process_item();
+		printf("Item produced. %d items in pipe.\n", num_pipe_items);
 	}
 }
 
 int main() {
-	process_item();
-	process_item();
-	return 0;
+	int n_threads = 2;
+	pthread_t producers[n_threads];
+	pthread_t consumers[n_threads];
+	int i, err1, err2;
+
+	for (i = 0; i < n_threads; i++) {
+		err2 = pthread_create(&(consumers[i]), NULL, consume, NULL);
+		err1 = pthread_create(&(producers[i]), NULL, produce, NULL);
+		if ((err1 | err2) != 0) {
+			printf("Thread initialisation failed.\n");
+			return 1;
+		}
+	}
+
+	for (i = 0; i < n_threads; i++) {
+		pthread_join(&(consumers[i]), NULL);
+		pthread_join(&(producers[i]), NULL);
+	}
 }
 
 
