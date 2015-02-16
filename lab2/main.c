@@ -16,15 +16,14 @@
 #define pipe_size 10
 
 int is_full = false;
-int is_empty = true;
-int num_pipe_items = 0;
+int is_empty = false;
+int num_pipe_items = 2;
 
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t full_cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t empty_cond = PTHREAD_COND_INITIALIZER;
 
-/*
-	a method that "processes" an item from the pipeline
-*/
+
 void process_item() {
 	int jobsize = rand()/2;
 	int i = 0;
@@ -33,44 +32,65 @@ void process_item() {
 	}
 }
 
+
+void print_buffer(int num_pipe_items) {
+	int i;
+	printf("|");
+	for (i = 0; i < num_pipe_items; i++) {
+		printf("=|");
+	}
+	printf("\n");
+}
+
+
 void * consume(void * arg) {
+	int rc;
+
+	pthread_mutex_lock(&lock);
 	while (true) {
-		pthread_mutex_lock(&lock);
 		while (is_empty) {
-			pthread_cond_wait(&cond, &lock);
+			rc = pthread_cond_wait(&empty_cond, &lock);
+			if (rc) {
+				pthread_mutex_unlock(&lock);
+			}
 		}
 		num_pipe_items--;
 		is_full = false;
 		if (num_pipe_items == 0) {
 			is_empty = true;
 		}
+		print_buffer(num_pipe_items);
 		pthread_mutex_unlock(&lock);
-		pthread_cond_signal(&cond);
+		pthread_cond_signal(&full_cond);
 		process_item();
-		printf("Item consumed. %d items in pipe.\n", num_pipe_items);
 	}
 }
 
 void * produce(void * arg) {
+	int rc;
+
+	pthread_mutex_lock(&lock);
 	while (true) {
-		pthread_mutex_lock(&lock);
 		while (is_full) {
-			pthread_cond_wait(&cond, &lock);
+			rc = pthread_cond_wait(&full_cond, &lock);
+			if (rc) {
+				pthread_mutex_unlock(&lock);
+			}
 		}
 		num_pipe_items++;
 		is_empty = false;
 		if (num_pipe_items == pipe_size) {
 			is_full = true;
 		}
+		print_buffer(num_pipe_items);
 		pthread_mutex_unlock(&lock);
-		pthread_cond_signal(&cond);
+		pthread_cond_signal(&empty_cond);
 		process_item();
-		printf("Item produced. %d items in pipe.\n", num_pipe_items);
 	}
 }
 
 int main() {
-	int n_threads = 2;
+	int n_threads = 5;
 	pthread_t producers[n_threads];
 	pthread_t consumers[n_threads];
 	int i, err1, err2;
@@ -89,10 +109,3 @@ int main() {
 		pthread_join(&(producers[i]), NULL);
 	}
 }
-
-
-
-
-
-
-
