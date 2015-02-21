@@ -16,9 +16,8 @@
 #define pipe_size 10
 
 int is_full = false;
-int is_empty = false;
-int num_pipe_items = 2;
-int items_left = true;
+int is_empty = true;
+int num_pipe_items = 0;
 int total_items = 20;
 int items_per_thread;
 
@@ -47,25 +46,21 @@ void print_buffer(int num_pipe_items) {
 
 
 void * consume(void * arg) {
-	int rc;
-
 	pthread_mutex_lock(&lock);
-	while (items_left) {
-		while (is_empty && items_left) {
-			rc = pthread_cond_wait(&empty_cond, &lock);
-			if (rc) {
-				pthread_mutex_unlock(&lock);
-			}
+	while (total_items) {
+		while (is_empty && total_items) {
+			pthread_cond_wait(&empty_cond, &lock);
 		}
 		num_pipe_items--;
+		total_items--;
 		is_full = false;
 		if (num_pipe_items == 0) {
 			is_empty = true;
 		}
 		print_buffer(num_pipe_items);
 		pthread_mutex_unlock(&lock);
-		pthread_cond_signal(&full_cond);
-		pthread_cond_signal(&empty_cond);
+		pthread_cond_broadcast(&full_cond);
+		pthread_cond_broadcast(&empty_cond);
 		process_item();
 	}
 	printf("Consumer done.\n");
@@ -73,16 +68,12 @@ void * consume(void * arg) {
 }
 
 void * produce(void * arg) {
-	int rc;
 	int items_to_make = items_per_thread;
 
 	pthread_mutex_lock(&lock);
 	while (items_to_make--) {
 		while (is_full && items_to_make) {
-			rc = pthread_cond_wait(&full_cond, &lock);
-			if (rc) {
-				pthread_mutex_unlock(&lock);
-			}
+			pthread_cond_wait(&full_cond, &lock);
 		}
 		num_pipe_items++;
 		is_empty = false;
@@ -91,7 +82,8 @@ void * produce(void * arg) {
 		}
 		print_buffer(num_pipe_items);
 		pthread_mutex_unlock(&lock);
-		pthread_cond_signal(&empty_cond);
+		pthread_cond_broadcast(&empty_cond);
+		pthread_cond_broadcast(&full_cond);
 		process_item();
 	}
 	printf("Producer done.\n");
@@ -99,7 +91,7 @@ void * produce(void * arg) {
 }
 
 int main() {
-	int n_threads = 8;
+	int n_threads = 2;
 	pthread_t producers[n_threads];
 	pthread_t consumers[n_threads];
 	int i, err1, err2;
@@ -117,9 +109,6 @@ int main() {
 	for (i = 0; i < n_threads; i++) {
 		pthread_join(producers[i], NULL);
 	}
-
-	fprintf(stderr, "items_left is false.\n");
-	items_left = false;
 	pthread_cond_broadcast(&empty_cond);
 	for (i = 0; i < n_threads; i++) {
 		pthread_join(consumers[i], NULL);
