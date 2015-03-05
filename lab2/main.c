@@ -10,10 +10,13 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define false 0
 #define true 1
 #define pipe_size 10
+#define n_producers 1
+#define n_consumers 1
 
 int is_full = false;
 int is_empty = true;
@@ -27,10 +30,13 @@ pthread_cond_t empty_cond = PTHREAD_COND_INITIALIZER;
 
 
 void process_item() {
-	int jobsize = rand()/2;
+	struct timespec total, remaining;
+	total.tv_sec = 0;
+	total.tv_nsec = rand()/10;
 	int i = 0;
-	while (i < jobsize) {
-		i++;
+	int err = true;
+	while (err) {
+		err = nanosleep(&total, &remaining);
 	}
 }
 
@@ -63,7 +69,6 @@ void * consume(void * arg) {
 		pthread_cond_broadcast(&empty_cond);
 		process_item();
 	}
-	printf("Consumer done.\n");
 	pthread_exit(NULL);
 }
 
@@ -86,32 +91,32 @@ void * produce(void * arg) {
 		pthread_cond_broadcast(&full_cond);
 		process_item();
 	}
-	printf("Producer done.\n");
 	pthread_exit(NULL);
 }
 
 int main() {
-	int n_threads = 2;
-	pthread_t producers[n_threads];
-	pthread_t consumers[n_threads];
-	int i, err1, err2;
-	items_per_thread = total_items / n_threads;
+	pthread_t producers[n_producers];
+	pthread_t consumers[n_consumers];
+	int i;
+	items_per_thread = total_items / n_producers;
 
-	for (i = 0; i < n_threads; i++) {
-		err2 = pthread_create(&(consumers[i]), NULL, consume, NULL);
-		err1 = pthread_create(&(producers[i]), NULL, produce, NULL);
-		if ((err1 | err2) != 0) {
-			printf("Thread initialisation failed.\n");
-			return 1;
-		}
+	for (i = 0; i < n_producers; i++) {
+		pthread_create(&(producers[i]), NULL, produce, NULL);
 	}
 
-	for (i = 0; i < n_threads; i++) {
+	for (i = 0; i < n_consumers; i++) {
+		pthread_create(&(consumers[i]), NULL, consume, NULL);
+	}
+
+	for (i = 0; i < n_producers; i++) {
 		pthread_join(producers[i], NULL);
 	}
+
 	pthread_cond_broadcast(&empty_cond);
-	for (i = 0; i < n_threads; i++) {
+	for (i = 0; i < n_consumers; i++) {
 		pthread_join(consumers[i], NULL);
 	}
+
+	printf("All done.\n");
 	return 0;
 }
